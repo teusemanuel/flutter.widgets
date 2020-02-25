@@ -308,35 +308,31 @@ class _PositionedListState extends State<PositionedList> {
       SchedulerBinding.instance.addPostFrameCallback((_) {
         if (registeredElements.value == null) return;
         final positions = <ItemPosition>[];
-        RenderViewport viewport;
+        var viewport;
         for (var element in registeredElements.value) {
           final RenderBox box = element.renderObject;
           viewport ??= RenderAbstractViewport.of(box);
           final ValueKey<int> key = element.widget.key;
           if (widget.scrollDirection == Axis.vertical) {
-            if (widget.shrinkWrap) {
               final reveal = viewport.getOffsetToReveal(box, 0.0).offset;
-              final itemOffset = reveal -
+              double itemOffset;
+
+            if (widget.shrinkWrap) {
+              itemOffset = reveal -
                   viewport.offset.pixels +
                   0.0 * viewport.size.height;
-              positions.add(ItemPosition(
-                  index: key.value,
-                  itemLeadingEdge: itemOffset.round() /
-                      scrollController.position.viewportDimension,
-                  itemTrailingEdge: (itemOffset + box.size.height).round() /
-                      scrollController.position.viewportDimension));
             } else {
-              final reveal = viewport.getOffsetToReveal(box, 0.0).offset;
-              final itemOffset = reveal -
+              itemOffset = reveal -
                   viewport.offset.pixels +
                   viewport.anchor * viewport.size.height;
-              positions.add(ItemPosition(
+              
+            }
+            positions.add(ItemPosition(
                   index: key.value,
                   itemLeadingEdge: itemOffset.round() /
                       scrollController.position.viewportDimension,
                   itemTrailingEdge: (itemOffset + box.size.height).round() /
                       scrollController.position.viewportDimension));
-            }
           } else {
             final itemOffset =
                 box.localToGlobal(Offset.zero, ancestor: viewport).dx;

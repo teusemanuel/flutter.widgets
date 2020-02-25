@@ -254,3 +254,167 @@ class UnboundedRenderViewport extends RenderViewport {
     if (childLayoutGeometry.hasVisualOverflow) _hasVisualOverflow = true;
   }
 }
+
+
+
+/// A render object that is bigger on the inside.
+///
+/// Version of [Viewport] with some modifications to how extents are
+/// computed to allow scroll extents outside 0 to 1.  See [Viewport]
+/// for more information.
+class UnboundedShrinkWrappingViewport extends ShrinkWrappingViewport {
+  UnboundedShrinkWrappingViewport({
+    Key key,
+    AxisDirection axisDirection = AxisDirection.down,
+    AxisDirection crossAxisDirection,
+    @required ViewportOffset offset,
+    List<Widget> slivers = const <Widget>[],
+  })  : super(
+            key: key,
+            axisDirection: axisDirection,
+            crossAxisDirection: crossAxisDirection,
+            offset: offset,
+            slivers: slivers);
+
+  @override
+  RenderShrinkWrappingViewport createRenderObject(BuildContext context) {
+    return UnboundedRenderShrinkWrappingViewport(
+      axisDirection: axisDirection,
+      crossAxisDirection: crossAxisDirection ?? Viewport.getDefaultCrossAxisDirection(context, axisDirection),
+      offset: offset,
+    );
+  }
+}
+
+
+/// A render object that is bigger on the inside.
+///
+/// Version of [RenderShrinkWrappingViewport] with some modifications to how extents are
+/// computed to allow scroll extents outside 0 to 1.  See [RenderShrinkWrappingViewport]
+/// for more information.
+///
+// Differences from [RenderShrinkWrappingViewport] are marked with a //***** Differences
+// comment.
+class UnboundedRenderShrinkWrappingViewport extends RenderShrinkWrappingViewport {
+  /// Creates a viewport for [RenderSliver] objects.
+  UnboundedRenderShrinkWrappingViewport({
+    AxisDirection axisDirection = AxisDirection.down,
+    @required AxisDirection crossAxisDirection,
+    @required ViewportOffset offset,
+    List<RenderSliver> children,
+  })  : super(
+            axisDirection: axisDirection,
+            crossAxisDirection: crossAxisDirection,
+            offset: offset,
+            children: children);
+
+  // Out-of-band data computed during layout.
+  double _maxScrollExtent;
+  double _shrinkWrapExtent;
+  bool _hasVisualOverflow = false;
+
+  @override
+  void performLayout() {
+     if (firstChild == null) {
+      switch (axis) {
+        case Axis.vertical:
+          assert(constraints.hasBoundedWidth);
+          size = Size(constraints.maxWidth, constraints.minHeight);
+          break;
+        case Axis.horizontal:
+          assert(constraints.hasBoundedHeight);
+          size = Size(constraints.minWidth, constraints.maxHeight);
+          break;
+      }
+      offset.applyViewportDimension(0.0);
+      _maxScrollExtent = 0.0;
+      _shrinkWrapExtent = 0.0;
+      _hasVisualOverflow = false;
+      offset.applyContentDimensions(0.0, 0.0);
+      return;
+    }
+
+    double mainAxisExtent;
+    double crossAxisExtent;
+    switch (axis) {
+      case Axis.vertical:
+        assert(constraints.hasBoundedWidth);
+        mainAxisExtent = constraints.maxHeight;
+        crossAxisExtent = constraints.maxWidth;
+        break;
+      case Axis.horizontal:
+        assert(constraints.hasBoundedHeight);
+        mainAxisExtent = constraints.maxWidth;
+        crossAxisExtent = constraints.maxHeight;
+        break;
+    }
+
+    double correction;
+    double effectiveExtent;
+    do {
+      assert(offset.pixels != null);
+      correction = _attemptLayout(mainAxisExtent, crossAxisExtent, offset.pixels);
+      if (correction != 0.0) {
+        offset.correctBy(correction);
+      } else {
+        switch (axis) {
+          case Axis.vertical:
+            effectiveExtent = constraints.constrainHeight(_shrinkWrapExtent);
+            break;
+          case Axis.horizontal:
+            effectiveExtent = constraints.constrainWidth(_shrinkWrapExtent);
+            break;
+        }
+        final bool didAcceptViewportDimension = offset.applyViewportDimension(effectiveExtent);
+        final bool didAcceptContentDimension = offset.applyContentDimensions(0.0, math.max(0.0, _maxScrollExtent - effectiveExtent));
+        if (didAcceptViewportDimension && didAcceptContentDimension)
+          break;
+      }
+    } while (true);
+    switch (axis) {
+      case Axis.vertical:
+        size = constraints.constrainDimensions(crossAxisExtent, effectiveExtent);
+        break;
+      case Axis.horizontal:
+        size = constraints.constrainDimensions(effectiveExtent, crossAxisExtent);
+        break;
+    }
+  }
+
+  double _attemptLayout(double mainAxisExtent, double crossAxisExtent, double correctedOffset) {
+    assert(!mainAxisExtent.isNaN);
+    assert(mainAxisExtent >= 0.0);
+    assert(crossAxisExtent.isFinite);
+    assert(crossAxisExtent >= 0.0);
+    assert(correctedOffset.isFinite);
+    _maxScrollExtent = 0.0;
+    _shrinkWrapExtent = 0.0;
+    _hasVisualOverflow = false;
+    return layoutChildSequence(
+      child: firstChild,
+      scrollOffset: math.max(0.0, correctedOffset),
+      overlap: math.min(0.0, correctedOffset),
+      layoutOffset: 0.0,
+      remainingPaintExtent: mainAxisExtent,
+      mainAxisExtent: mainAxisExtent,
+      crossAxisExtent: crossAxisExtent,
+      growthDirection: GrowthDirection.forward,
+      advance: childAfter,
+      remainingCacheExtent: mainAxisExtent + 2 * cacheExtent,
+      cacheOrigin: -cacheExtent,
+    );
+  }
+
+  @override
+  bool get hasVisualOverflow => _hasVisualOverflow;
+
+  @override
+  void updateOutOfBandData(
+      GrowthDirection growthDirection, SliverGeometry childLayoutGeometry) {
+    assert(growthDirection == GrowthDirection.forward);
+    _maxScrollExtent += childLayoutGeometry.scrollExtent;
+    if (childLayoutGeometry.hasVisualOverflow)
+      _hasVisualOverflow = true;
+    _shrinkWrapExtent += childLayoutGeometry.maxPaintExtent;
+  }
+}

@@ -54,7 +54,7 @@ class UnboundedCustomScrollView extends CustomScrollView {
     List<Widget> slivers,
   ) {
     if (shrinkWrap) {
-      return ShrinkWrappingViewport(
+      return UnboundedShrinkWrappingViewport(
         axisDirection: axisDirection,
         offset: offset,
         slivers: slivers,
